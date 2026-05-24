@@ -1,0 +1,340 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Controller Aim Trainer</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+
+    body {
+      background: #1a1a2e;
+      overflow: hidden;
+      font-family: 'Segoe UI', system-ui, sans-serif;
+      color: #eee;
+      height: 100vh;
+      width: 100vw;
+    }
+
+    #game {
+      position: relative;
+      width: 100%;
+      height: 100%;
+    }
+
+    #crosshair {
+      position: absolute;
+      width: 32px;
+      height: 32px;
+      pointer-events: none;
+      transform: translate(-50%, -50%);
+      z-index: 100;
+    }
+
+    #crosshair::before,
+    #crosshair::after {
+      content: '';
+      position: absolute;
+      background: #00ff88;
+      border-radius: 1px;
+    }
+
+    #crosshair::before {
+      width: 2px;
+      height: 100%;
+      left: 50%;
+      transform: translateX(-50%);
+    }
+
+    #crosshair::after {
+      height: 2px;
+      width: 100%;
+      top: 50%;
+      transform: translateY(-50%);
+    }
+
+    #crosshair .dot {
+      position: absolute;
+      width: 6px;
+      height: 6px;
+      background: #00ff88;
+      border-radius: 50%;
+      top: 50%;
+      left: 50%;
+      transform: translate(-50%, -50%);
+    }
+
+    .target {
+      position: absolute;
+      transform: translate(-50%, -50%);
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 8px;
+      z-index: 50;
+    }
+
+    .target-circle {
+      width: 60px;
+      height: 60px;
+      border-radius: 50%;
+      border: 3px solid #ff4757;
+      background: rgba(255, 71, 87, 0.15);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      transition: transform 0.1s;
+    }
+
+    .target-circle.hit {
+      background: rgba(0, 255, 136, 0.3);
+      border-color: #00ff88;
+      transform: scale(1.2);
+    }
+
+    .target-label {
+      font-size: 14px;
+      font-weight: 700;
+      color: #fff;
+      background: rgba(0, 0, 0, 0.7);
+      padding: 4px 10px;
+      border-radius: 4px;
+      white-space: nowrap;
+    }
+
+    #hud {
+      position: fixed;
+      top: 20px;
+      left: 20px;
+      z-index: 200;
+      font-size: 16px;
+      line-height: 1.8;
+    }
+
+    #hud .label { color: #888; }
+    #hud .value { color: #00ff88; font-weight: 700; }
+
+    #status {
+      position: fixed;
+      bottom: 20px;
+      left: 50%;
+      transform: translateX(-50%);
+      z-index: 200;
+      font-size: 14px;
+      color: #888;
+      text-align: center;
+    }
+
+    #sensitivity-control {
+      position: fixed;
+      top: 20px;
+      right: 20px;
+      z-index: 200;
+      font-size: 14px;
+      color: #888;
+    }
+
+    #sensitivity-control input {
+      width: 120px;
+      vertical-align: middle;
+    }
+
+    .miss-flash {
+      animation: missFlash 0.3s ease-out;
+    }
+
+    @keyframes missFlash {
+      0% { box-shadow: 0 0 0 0 rgba(255, 71, 87, 0.6); }
+      100% { box-shadow: 0 0 0 20px rgba(255, 71, 87, 0); }
+    }
+  </style>
+</head>
+<body>
+  <div id="game">
+    <div id="crosshair"><div class="dot"></div></div>
+  </div>
+
+  <div id="hud">
+    <div><span class="label">Score: </span><span class="value" id="score">0</span></div>
+    <div><span class="label">Streak: </span><span class="value" id="streak">0</span></div>
+    <div><span class="label">Accuracy: </span><span class="value" id="accuracy">-</span></div>
+    <div><span class="label">Avg Time: </span><span class="value" id="avg-time">-</span></div>
+  </div>
+
+  <div id="sensitivity-control">
+    <label>Sensitivity: <input type="range" id="sensitivity" min="1" max="20" value="8"></label>
+    <span id="sens-value">8</span>
+  </div>
+
+  <div id="status">Connect a controller and press any button to start</div>
+
+  <script>
+    const game = document.getElementById('game');
+    const crosshairEl = document.getElementById('crosshair');
+    const scoreEl = document.getElementById('score');
+    const streakEl = document.getElementById('streak');
+    const accuracyEl = document.getElementById('accuracy');
+    const avgTimeEl = document.getElementById('avg-time');
+    const statusEl = document.getElementById('status');
+    const sensitivityInput = document.getElementById('sensitivity');
+    const sensValueEl = document.getElementById('sens-value');
+
+    const BUTTONS = [
+      { index: 5, name: 'R1', icon: 'R1' },
+      { index: 7, name: 'R2', icon: 'R2' },
+      { index: 4, name: 'L1', icon: 'L1' },
+      { index: 6, name: 'L2', icon: 'L2' },
+      { index: 1, name: 'Circle', icon: `<svg width="28" height="28" viewBox="0 0 28 28"><circle cx="14" cy="14" r="11" fill="none" stroke="#ff6b7f" stroke-width="3"/></svg>` },
+      { index: 0, name: 'Cross', icon: `<svg width="28" height="28" viewBox="0 0 28 28"><line x1="7" y1="7" x2="21" y2="21" stroke="#7ba4db" stroke-width="3" stroke-linecap="round"/><line x1="21" y1="7" x2="7" y2="21" stroke="#7ba4db" stroke-width="3" stroke-linecap="round"/></svg>` },
+      { index: 3, name: 'Triangle', icon: `<svg width="28" height="28" viewBox="0 0 28 28"><polygon points="14,4 26,24 2,24" fill="none" stroke="#6fdcb1" stroke-width="3" stroke-linejoin="round"/></svg>` },
+      { index: 2, name: 'Square', icon: `<svg width="28" height="28" viewBox="0 0 28 28"><rect x="5" y="5" width="18" height="18" fill="none" stroke="#e88bd6" stroke-width="3"/></svg>` },
+    ];
+
+    let crosshairX = window.innerWidth / 2;
+    let crosshairY = window.innerHeight / 2;
+    let sensitivity = 8;
+    let gameStarted = false;
+    let currentTarget = null;
+    let targetSpawnTime = 0;
+
+    let score = 0;
+    let streak = 0;
+    let totalShots = 0;
+    let hits = 0;
+    let reactionTimes = [];
+
+    let prevButtonStates = new Array(16).fill(false);
+
+    sensitivityInput.addEventListener('input', (e) => {
+      sensitivity = parseInt(e.target.value);
+      sensValueEl.textContent = sensitivity;
+    });
+
+    function spawnTarget() {
+      if (currentTarget) {
+        currentTarget.element.remove();
+      }
+
+      const margin = 80;
+      const x = margin + Math.random() * (window.innerWidth - margin * 2);
+      const y = margin + Math.random() * (window.innerHeight - margin * 2);
+      const button = BUTTONS[Math.floor(Math.random() * BUTTONS.length)];
+
+      const el = document.createElement('div');
+      el.className = 'target';
+      el.style.left = x + 'px';
+      el.style.top = y + 'px';
+      el.innerHTML = `
+        <div class="target-circle"></div>
+        <div class="target-label">${button.icon}</div>
+      `;
+      game.appendChild(el);
+
+      currentTarget = { x, y, button, element: el };
+      targetSpawnTime = performance.now();
+    }
+
+    function checkHit(buttonIndex) {
+      if (!currentTarget) return;
+
+      totalShots++;
+
+      const dx = crosshairX - currentTarget.x;
+      const dy = crosshairY - currentTarget.y;
+      const dist = Math.sqrt(dx * dx + dy * dy);
+      const hitRadius = 40;
+
+      if (dist <= hitRadius && buttonIndex === currentTarget.button.index) {
+        const reactionTime = performance.now() - targetSpawnTime;
+        reactionTimes.push(reactionTime);
+        hits++;
+        score += Math.max(10, Math.round(100 - reactionTime / 20));
+        streak++;
+
+        currentTarget.element.querySelector('.target-circle').classList.add('hit');
+        setTimeout(() => spawnTarget(), 200);
+      } else {
+        streak = 0;
+        crosshairEl.classList.add('miss-flash');
+        setTimeout(() => crosshairEl.classList.remove('miss-flash'), 300);
+      }
+
+      updateHUD();
+    }
+
+    function updateHUD() {
+      scoreEl.textContent = score;
+      streakEl.textContent = streak;
+      accuracyEl.textContent = totalShots > 0
+        ? Math.round((hits / totalShots) * 100) + '%'
+        : '-';
+      avgTimeEl.textContent = reactionTimes.length > 0
+        ? Math.round(reactionTimes.reduce((a, b) => a + b, 0) / reactionTimes.length) + 'ms'
+        : '-';
+    }
+
+    function applyDeadzone(value, deadzone = 0.15) {
+      if (Math.abs(value) < deadzone) return 0;
+      return (value - Math.sign(value) * deadzone) / (1 - deadzone);
+    }
+
+    function gameLoop() {
+      const gamepads = navigator.getGamepads();
+      let gp = null;
+
+      for (const pad of gamepads) {
+        if (pad && pad.connected) { gp = pad; break; }
+      }
+
+      if (gp) {
+        if (!gameStarted) {
+          for (let i = 0; i < gp.buttons.length; i++) {
+            if (gp.buttons[i].pressed) {
+              gameStarted = true;
+              statusEl.textContent = 'Aim with right stick, press the shown button!';
+              setTimeout(() => { statusEl.style.opacity = '0'; }, 2000);
+              spawnTarget();
+              break;
+            }
+          }
+        }
+
+        if (gameStarted) {
+          const rx = applyDeadzone(gp.axes[2] || 0);
+          const ry = applyDeadzone(gp.axes[3] || 0);
+
+          crosshairX += rx * sensitivity;
+          crosshairY += ry * sensitivity;
+
+          crosshairX = Math.max(0, Math.min(window.innerWidth, crosshairX));
+          crosshairY = Math.max(0, Math.min(window.innerHeight, crosshairY));
+
+          crosshairEl.style.left = crosshairX + 'px';
+          crosshairEl.style.top = crosshairY + 'px';
+
+          for (let i = 0; i < gp.buttons.length; i++) {
+            const pressed = gp.buttons[i].pressed;
+            if (pressed && !prevButtonStates[i]) {
+              checkHit(i);
+            }
+            prevButtonStates[i] = pressed;
+          }
+        }
+      }
+
+      requestAnimationFrame(gameLoop);
+    }
+
+    window.addEventListener('gamepadconnected', (e) => {
+      statusEl.textContent = `Controller connected: ${e.gamepad.id}. Press any button to start!`;
+    });
+
+    window.addEventListener('gamepaddisconnected', () => {
+      statusEl.textContent = 'Controller disconnected. Reconnect to continue.';
+      statusEl.style.opacity = '1';
+    });
+
+    requestAnimationFrame(gameLoop);
+  </script>
+</body>
+</html>
