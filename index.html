@@ -159,6 +159,8 @@
     <div><span class="label">Streak: </span><span class="value" id="streak">0</span></div>
     <div><span class="label">Accuracy: </span><span class="value" id="accuracy">-</span></div>
     <div><span class="label">Avg Time: </span><span class="value" id="avg-time">-</span></div>
+    <div><span class="label">Pace (1min): </span><span class="value" id="pace-1min">-</span></div>
+    <div><span class="label">Pace (all): </span><span class="value" id="pace-all">-</span></div>
   </div>
 
   <div id="sensitivity-control">
@@ -175,6 +177,8 @@
     const streakEl = document.getElementById('streak');
     const accuracyEl = document.getElementById('accuracy');
     const avgTimeEl = document.getElementById('avg-time');
+    const pace1minEl = document.getElementById('pace-1min');
+    const paceAllEl = document.getElementById('pace-all');
     const statusEl = document.getElementById('status');
     const sensitivityInput = document.getElementById('sensitivity');
     const sensValueEl = document.getElementById('sens-value');
@@ -202,6 +206,8 @@
     let totalShots = 0;
     let hits = 0;
     let reactionTimes = [];
+    let hitTimestamps = [];
+    let gameStartTime = 0;
 
     let prevButtonStates = new Array(16).fill(false);
 
@@ -247,6 +253,7 @@
       if (dist <= hitRadius && buttonIndex === currentTarget.button.index) {
         const reactionTime = performance.now() - targetSpawnTime;
         reactionTimes.push(reactionTime);
+        hitTimestamps.push(performance.now());
         hits++;
         score += Math.max(10, Math.round(100 - reactionTime / 20));
         streak++;
@@ -271,6 +278,23 @@
       avgTimeEl.textContent = reactionTimes.length > 0
         ? Math.round(reactionTimes.reduce((a, b) => a + b, 0) / reactionTimes.length) + 'ms'
         : '-';
+
+      const now = performance.now();
+      const oneMinAgo = now - 60000;
+      const recentHits = hitTimestamps.filter(t => t >= oneMinAgo);
+      if (recentHits.length >= 2) {
+        const elapsed = (recentHits[recentHits.length - 1] - recentHits[0]) / 1000;
+        pace1minEl.textContent = (elapsed / (recentHits.length - 1)).toFixed(1) + 's';
+      } else {
+        pace1minEl.textContent = '-';
+      }
+
+      if (hitTimestamps.length >= 2) {
+        const totalElapsed = (hitTimestamps[hitTimestamps.length - 1] - hitTimestamps[0]) / 1000;
+        paceAllEl.textContent = (totalElapsed / (hitTimestamps.length - 1)).toFixed(1) + 's';
+      } else {
+        paceAllEl.textContent = '-';
+      }
     }
 
     function applyDeadzone(value, deadzone = 0.15) {
